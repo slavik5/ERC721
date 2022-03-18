@@ -3,155 +3,108 @@
 pragma solidity ^0.8.0;
 //import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-//contract token is AccessControl{
-contract Token is  AccessControl {
-    using Address for address;
-    using Strings for uint256;
+contract Token is AccessControl {
 
-    uint256 private id=0;
-    mapping(uint256 => address) private owners;
-    mapping(address => uint256) private balances;
-    mapping(uint256 => address) private tokenApprovals;
-    mapping(address => mapping(address => bool)) private operatorApprovals;
-    string private name_;
-    string private symbol_;
-    string private URI;
-   constructor(
-        string memory name,
-        string memory symbol,
-        string memory URI_
-    ){
-        name_=name;
-        symbol_=symbol;
-        URI=URI_;
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);        
+    uint256 private totalBalance;
+    mapping(address => mapping(address => uint256)) private allow;
+    mapping(address => uint256) balance;
+    string private _name = "SlavkaToken";
+    string private _symbol = "ST";
+    uint8 private _decimals = 18;
+    constructor() {
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        mint(msg.sender, 10000 * 10 ** decimals());
     }
 
-
-
     function name() public view returns(string memory) {
-        return name_;
+        return _name;
     }
 
     function symbol() public view returns(string memory) {
-        return symbol_;
+        return _symbol;
     }
 
-    function tokenURI(uint256 tokenId) public view returns (string memory) {
-        require(owners[tokenId]!=address(0),"tokenId not exist");        
-        return bytes(URI).length > 0 ? string(abi.encodePacked(URI, tokenId.toString())) : "";
+    function decimals() public view returns(uint8) {
+        return _decimals;
     }
 
-    function balanceOf(address account) external view returns(uint256) {
-        return balances[account];
+    function balanceOf(address account) public view returns(uint256) {
+        return balance[account];
     }
 
-    function ownerOf(uint256 tokenId) external view returns(address) {
-        
-        require(owners[tokenId]!=address(0),"tokenId not exist");
-        return owners[tokenId];
+    function totalSupply() public view returns(uint256) {
+        return totalBalance;
     }
 
-    
+    function transfer(address to, uint256 amount) public returns(bool) {
+        require(to != address(0), "zero address");
+        require(balance[msg.sender] >= amount, "not enough tokens");
+        balance[to] += amount;
+        balance[msg.sender] -= amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
 
-    
-
-    function approve(address to, uint256 tokenId) public  {
-        require(owners[tokenId]!=address(0),"tokenId not exist");
-        require(owners[tokenId]==msg.sender||tokenApprovals[tokenId]==msg.sender, "The caller must own the token or be an approved operator");
-        
-        tokenApprovals[tokenId]=to;
-        emit Approval(msg.sender, to, tokenId);
-        
     }
 
+    function allowance(address from, address spender) public view returns(uint256) {
+        return allow[from][spender];
+    }
 
-    function getApproved(uint256 tokenId) public view returns(address) {
-        require(owners[tokenId]!=address(0),"tokenId not exist");
-        return tokenApprovals[tokenId];
+    function approve(address spender, uint256 amount) public returns(bool) {
+        require(spender != address(0), "spender- zero address");
+
+        allow[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
     }
-    function setApprovalForAll(address operator, bool _approved) public
-    {
-        require(msg.sender!=operator,"operator is caller");
-        operatorApprovals[msg.sender][operator]=_approved;
-        emit ApprovalForAll(msg.sender, operator, _approved);
-    }
-    function isApprovedForAll(address owner, address operator) public returns(bool)
-    {
-        
-        return operatorApprovals[owner][operator];
-        
-    }
-    
-    // function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public 
-    // {
-    //     require(_checkOnERC721Received(from, to, tokenId, data), "ERC721: transfer to non ERC721Receiver implementer");
-    //     transferFrom(from, to, tokenId);
-        
-    // }
-    
-    // function safeTransferFrom(address from, address to, uint256 tokenId) public  {
-        
-    //     safeTransferFrom(from, to, tokenId,"");
-    // }
-    function transferFrom(address from, address to, uint256 tokenId) public{
+
+    function transferFrom(address from, address to, uint256 amount) public returns(bool) {
         require(to != address(0), "to-zero address");
         require(from != address(0), "from- zero address");
-        require(owners[tokenId]!=address(0),"tokenId not exist");
-        
-        if(msg.sender!=from)
-        {
-            require(isApprovedForAll(from,msg.sender)==true||getApproved(tokenId)==msg.sender,"not ApprovedForAll or not approved");
-            approve(address(0), tokenId);
-            
-            
-        }
-        
-        owners[tokenId]=to; 
-        balances[from]-=1;
-        balances[to]+=1;   
-        emit Transfer(from, to, tokenId);
-    }
-    function mint(address to) public virtual {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "msg.sender must have minter role to mint");
-        require(to != address(0), "mint to the zero address");
-        balances[to] += 1;
-        owners[id] = to;
-        id+=1;
-        emit Transfer(address(0), to, tokenId);
+        require(balance[from] >= amount, "not enough tokens on balance");
+        require(allow[from][msg.sender] >= amount, "not enough tokens on allowance");
+        balance[to] += amount;
+        balance[from] -= amount;
+        allow[from][msg.sender] -= amount;
+        emit Transfer(from, to, amount);
+        return true;
     }
 
-    // function _checkOnERC721Received(
-    //     address from,
-    //     address to,
-    //     uint256 tokenId,
-    //     bytes memory _data
-    // ) private returns (bool) {
-    //     if (to.isContract()) {
-    //         try IERC721Receiver(to).onERC721Received(_msgSender(), from, tokenId, _data) returns (bytes4 retval) {
-    //             return retval == IERC721Receiver.onERC721Received.selector;
-    //         } catch (bytes memory reason) {
-    //             if (reason.length == 0) {
-    //                 revert("ERC721: transfer to non ERC721Receiver implementer");
-    //             } else {
-    //                 assembly {
-    //                     revert(add(32, reason), mload(reason))
-    //                 }
-    //             }
-    //         }
-    //     } else {
-    //         return true;
-    //     }
-    // }
+    function increaseAllowance(address spender, uint256 amount) public returns(bool) {
+        require(spender != address(0), "spender - zero address");
+        allow[msg.sender][spender] += amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
 
-    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
-    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
-    event ApprovalForAll(address indexed owner, address indexed operator, bool indexed approved);
+    }
+
+    function decreaseAllowance(address spender, uint256 amount) public returns(bool) {
+        require(spender != address(0), "spender - zero address");
+        require(allow[msg.sender][spender] >= amount, "not enough for allowance");
+        allow[msg.sender][spender] -= amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function mint(address account, uint256 amount) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "msg.sender not owner");
+        require(account != address(0), "account - zero address");
+        totalBalance += amount;
+        balance[account] += amount;
+        emit Transfer(address(0), account, amount);
+    }
+
+    function burn(address account, uint256 amount) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "msg.sender not owner");
+        require(account != address(0), "account - zero address");
+        require(balance[account] >= amount, "not enough tokens on account");
+        totalBalance -= amount;
+        balance[account] -= amount;
+        emit Transfer(account, address(0), amount);
+
+    }
+    event Transfer(address indexed from, address indexed to, uint256 _value);
+    event Approval(address indexed from, address indexed spender, uint256 amount);
 
 }
